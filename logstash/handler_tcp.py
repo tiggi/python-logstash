@@ -18,9 +18,14 @@ class TCPLogstashHandler(SocketHandler, object):
     :param keyfile: The path to client side SSL key file (default is None).
     :param certfile: The path to client side SSL certificate file (default is None).
     :param ca_certs: The path to the file containing recognised CA certificates. System wide CA certs are used if omitted.
+    :param log_attrs: list of log attributes or tuple with attribute name and translation
+        (default ['message', ('pathname', 'path'), ('levelname', 'level'), ('name', 'logger_name')]).
+    :param extra_fields: additional fields.
     """
 
-    def __init__(self, host, port=5959, message_type='logstash', tags=None, fqdn=False, version=0, ssl=True, ssl_verify=True, keyfile=None, certfile=None, ca_certs=None):
+    def __init__(self, host, port=5959, message_type='logstash', tags=None, fqdn=False, version=0,
+                 ssl=True, ssl_verify=True, keyfile=None, certfile=None, ca_certs=None,
+                 log_attrs=None, extra_fields=None):
         super(TCPLogstashHandler, self).__init__(host, port)
 
         self.ssl = ssl
@@ -30,9 +35,9 @@ class TCPLogstashHandler(SocketHandler, object):
         self.ca_certs = ca_certs
 
         if version == 1:
-            self.formatter = formatter.LogstashFormatterVersion1(message_type, tags, fqdn)
+            self.formatter = formatter.LogstashFormatterVersion1(message_type, tags, fqdn, log_attrs, extra_fields)
         else:
-            self.formatter = formatter.LogstashFormatterVersion0(message_type, tags, fqdn)
+            self.formatter = formatter.LogstashFormatterVersion0(message_type, tags, fqdn, log_attrs, extra_fields)
 
     def makePickle(self, record):
         return self.formatter.format(record) + b'\n'

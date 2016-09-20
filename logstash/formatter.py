@@ -11,7 +11,36 @@ except ImportError:
 
 class LogstashFormatterBase(logging.Formatter):
 
-    def __init__(self, message_type='Logstash', tags=None, fqdn=False):
+    def __init__(self, message_type='Logstash', tags=None, fqdn=False, log_attrs=None, extra_fields=None):
+        """
+        Defines base format and helper functions
+
+        :param fqdn: Flag if host has a full qualified domain name
+
+        :param log_attrs: list with log attributes to be added, which each one can be both
+            the attribute name or a tupple containing the attribute name and the name
+            to be used by logstash `(attr_name, attr_translation)`
+
+            The list contains all the log attributes can be found at:
+            http://docs.python.org/library/logging.html#logrecord-attributes
+
+            default: ['message', ('pathname', 'path'), ('levelname', 'level'), ('name', 'logger_name')]
+
+        :param extra_fields: dict of additional fields
+        """
+
+        if not log_attrs:
+            log_attrs = ['message', ('pathname', 'path'), ('levelname', 'level'), ('name', 'logger_name')]
+
+        self.log_attrs = []
+        for attr in log_attrs:
+            if type(attr) is tuple:
+                self.log_attrs.append(attr)
+            else:
+                self.log_attrs.append((attr, attr))
+
+        self.extra_fields = extra_fields
+
         self.message_type = message_type
         self.tags = tags if tags is not None else []
 
@@ -20,15 +49,7 @@ class LogstashFormatterBase(logging.Formatter):
         else:
             self.host = socket.gethostname()
 
-    def get_extra_fields(self, record):
-        # The list contains all the attributes listed in
-        # http://docs.python.org/library/logging.html#logrecord-attributes
-        skip_list = (
-            'args', 'asctime', 'created', 'exc_info', 'exc_text', 'filename',
-            'funcName', 'id', 'levelname', 'levelno', 'lineno', 'module',
-            'msecs', 'msecs', 'message', 'msg', 'name', 'pathname', 'process',
-            'processName', 'relativeCreated', 'thread', 'threadName', 'extra',
-            'auth_token', 'password')
+    def get_log_fields(self, record):
 
         if sys.version_info < (3, 0):
             easy_types = (basestring, bool, dict, float, int, long, list, type(None))
@@ -37,16 +58,21 @@ class LogstashFormatterBase(logging.Formatter):
 
         fields = {}
 
+        log_keys = [attr[0] for attr in self.log_attrs]
+        field_names = [attr[1] for attr in self.log_attrs]
+
         for key, value in record.__dict__.items():
-            if key not in skip_list:
+            if key in log_keys:
+                idx = log_keys.index(key)
                 if isinstance(value, easy_types):
-                    fields[key] = value
+                    fields[field_names[idx]] = value
                 else:
-                    fields[key] = repr(value)
+                    fields[field_names[idx]] = repr(value)
 
         return fields
 
     def get_debug_fields(self, record):
+
         fields = {
             'stack_trace': self.format_exception(record.exc_info),
             'lineno': record.lineno,
@@ -62,7 +88,14 @@ class LogstashFormatterBase(logging.Formatter):
         if not getattr(record, 'processName', None):
             fields['processName'] = record.processName
 
+        # remove duplicated
+        log_keys = [attr[0] for attr in self.log_attrs]
+        duplicated_keys = [key for key in fields.keys() if key in log_keys]
+        for key in duplicated_keys:
+            del fields[key]
+
         return fields
+
 
     @classmethod
     def format_source(cls, message_type, host, path):
@@ -104,8 +137,12 @@ class LogstashFormatterVersion0(LogstashFormatterBase):
             },
         }
 
+        # Add log fields
+        message['@fields'].update(self.get_log_fields(record))
+
         # Add extra fields
-        message['@fields'].update(self.get_extra_fields(record))
+        if self.extra_fields:
+            message['@fields'].update(self.extra_fields)
 
         # If exception, add debug info
         if record.exc_info:
@@ -121,19 +158,17 @@ class LogstashFormatterVersion1(LogstashFormatterBase):
         message = {
             '@timestamp': self.format_timestamp(record.created),
             '@version': '1',
-            'message': record.getMessage(),
             'host': self.host,
-            'path': record.pathname,
             'tags': self.tags,
             'type': self.message_type,
-
-            # Extra Fields
-            'level': record.levelname,
-            'logger_name': record.name,
         }
 
+        # Add log fields
+        message.update(self.get_log_fields(record))
+
         # Add extra fields
-        message.update(self.get_extra_fields(record))
+        if self.extra_fields:
+            message.update(self.extra_fields)
 
         # If exception, add debug info
         if record.exc_info:
