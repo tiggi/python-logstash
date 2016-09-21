@@ -6,6 +6,9 @@ http://logstash.net/
 
 Changelog
 =========
+PATCH
+  - Adds ssl suport
+  - Adds fields configuration with log_attrs and extra_fields
 0.4.7
   - Add couple of sensitive fields to the skip_list
 0.4.6
@@ -115,6 +118,15 @@ Modify your ``settings.py`` to integrate ``python-logstash`` with Django's loggi
             'message_type': 'logstash',  # 'type' field in logstash message. Default value: 'logstash'.
             'fqdn': False, # Fully qualified domain name. Default value: false.
             'tags': ['tag1', 'tag2'], # list of tags. Default: None.
+            'log_attrs': [
+                'message',
+                ('pathname', 'path'),
+                ('levelname', 'level'),
+                ('name', 'logger_name'),
+            ], # list log attributes/translations which can be found at https://docs.python.org/3/library/logging.html#logrecord-attributes
+            'extra_fields': [
+                'app_name': 'my_app'
+            ] # fixed fields.
         },
     },
     'loggers': {
